@@ -71,7 +71,7 @@ __all__ = [
     'RecoveryTimeoutError',
     'RecoveryStateError',
     
-    # Download Enhancement
+    # Download Enhancement (issue #5)
     'RecoverableDownloadManager',
     'DownloadState',
     'DownloadPersistence',
