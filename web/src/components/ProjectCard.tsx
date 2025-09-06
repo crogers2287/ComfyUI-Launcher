@@ -15,8 +15,9 @@ import {
     AlertDialogTitle,
 } from './ui/alert-dialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon, PlayIcon, StopCircleIcon, TrashIcon, ExternalLinkIcon } from 'lucide-react'
 import { DialogDescription } from '@radix-ui/react-dialog'
+import { cn } from '@/lib/utils'
 
 type ProjectCardProps = {
     item: Project
@@ -180,25 +181,49 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
                 </AlertDialogContent>
             </AlertDialog>
             <div
-                className={
-                    'rounded-md  p-5 border ' +
-                    'bg-gray-100 hover:bg-gray-200 border-gray-300'
-                }
+                className={cn(
+                    'group relative rounded-lg p-6 border transition-all duration-200',
+                    'bg-card hover:shadow-lg hover:scale-[1.02]',
+                    'border-border dark:hover:border-primary/20',
+                    item.state.state === 'running' && 'ring-2 ring-primary/20'
+                )}
             >
-                <div className="flex flex-col space-y-5">
+                {/* Status Indicator */}
+                <div className="absolute top-3 right-3">
+                    <div
+                        className={cn(
+                            'h-3 w-3 rounded-full',
+                            item.state.state === 'ready' && 'bg-gray-400',
+                            item.state.state === 'running' && 'bg-green-500 animate-pulse',
+                            item.state.state !== 'ready' && item.state.state !== 'running' && 'bg-yellow-500'
+                        )}
+                        title={item.state.state}
+                    />
+                </div>
+
+                <div className="flex flex-col space-y-4">
                     <div className="flex flex-col">
-                        <h1 className="text-lg font-semibold">
+                        <h1 className="text-lg font-semibold text-foreground">
                             {item.state.name}
                         </h1>
-                        <p className="mt-1 font-medium text-xs text-gray-500 font-mono">
+                        <p className="mt-1 font-medium text-xs text-muted-foreground font-mono">
                             ID: {item.id}
                         </p>
                     </div>
-                    {item.state.status_message && item.state.status_message.length > 0 && <div className="flex flex-row items-center space-x-2">
-                        {item.state.state !== "ready" && <Loader2Icon className="animate-spin h-4 w-4 text-gray-500" />}
-                        <p className='text-sm italic text-neutral-500'>{item.state.status_message}</p>
-                    </div>}
-                    <div className="flex flex-row space-x-2">
+                    
+                    {item.state.status_message && item.state.status_message.length > 0 && (
+                        <div className="flex flex-row items-center space-x-2">
+                            {item.state.state !== "ready" && 
+                                <Loader2Icon className="animate-spin h-4 w-4 text-muted-foreground" />
+                            }
+                            <p className='text-sm italic text-muted-foreground'>
+                                {item.state.status_message}
+                            </p>
+                        </div>
+                    )}
+                    
+                    {/* Action buttons with icons */}
+                    <div className="flex flex-row space-x-2 pt-2">
                         {item.state.state === 'ready' && (
                             <Button
                                 onClick={(e) => {
@@ -206,21 +231,25 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
                                     launchProjectMutation.mutate()
                                 }}
                                 variant="default"
+                                size="sm"
+                                className="flex items-center gap-2"
                             >
+                                <PlayIcon className="h-4 w-4" />
                                 Launch
                             </Button>
                         )}
-                        {item.state.state === 'running' &&
-                            !!item.state.port && (
-                                <Button variant="default" asChild>
-                                    <a
-                                        href={getProjectURL(item.state.port, settings)}
-                                        target="_blank"
-                                    >
-                                        Open
-                                    </a>
-                                </Button>
-                            )}
+                        {item.state.state === 'running' && !!item.state.port && (
+                            <Button variant="default" size="sm" asChild>
+                                <a
+                                    href={getProjectURL(item.state.port, settings)}
+                                    target="_blank"
+                                    className="flex items-center gap-2"
+                                >
+                                    <ExternalLinkIcon className="h-4 w-4" />
+                                    Open
+                                </a>
+                            </Button>
+                        )}
                         {item.state.state === 'running' && (
                             <Button
                                 onClick={(e) => {
@@ -228,21 +257,25 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
                                     stopProjectMutation.mutate()
                                 }}
                                 variant="secondary"
+                                size="sm"
+                                className="flex items-center gap-2"
                             >
+                                <StopCircleIcon className="h-4 w-4" />
                                 Stop
                             </Button>
                         )}
-                        {
-                            <Button
-                                onClick={(e) => {
-                                    e.preventDefault()
-                                    setDeleteProjectDialogOpen(true)
-                                }}
-                                variant="destructive"
-                            >
-                                Delete
-                            </Button>
-                        }
+                        <Button
+                            onClick={(e) => {
+                                e.preventDefault()
+                                setDeleteProjectDialogOpen(true)
+                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="flex items-center gap-2 hover:text-destructive"
+                        >
+                            <TrashIcon className="h-4 w-4" />
+                            Delete
+                        </Button>
                     </div>
                 </div>
             </div>

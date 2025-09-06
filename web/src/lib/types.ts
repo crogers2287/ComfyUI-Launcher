@@ -58,17 +58,17 @@ export type Suggestion = {
     filename: string
     source: 'hf' | 'civitai'
     filepath: string
-    hf_file_id: number | null
-    civitai_file_id: number | null
+    hf_file_id: string | number | null
+    civitai_file_id: string | number | null
     url: string
     node_type: string
     sha256_checksum: string | null | undefined
 }
 
 export type Source = {
-    type: 'hf' | 'civitai'
+    type: 'hf' | 'civitai' | 'workflow'
     url: string | null
-    file_id: number | null
+    file_id: string | number | null
 }
 
 export type MissingModel = {

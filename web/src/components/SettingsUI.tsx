@@ -4,10 +4,13 @@ import { useMutation } from '@tanstack/react-query'
 import React, { useEffect } from 'react'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
-import { useToast } from './ui/use-toast'
+import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Config } from '@/lib/types'
 import { useQuery } from '@tanstack/react-query'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { KeyIcon, ExternalLinkIcon } from 'lucide-react'
+import { KeyboardShortcuts } from './KeyboardShortcuts'
 
 function SettingsUI() {
     const [civitaiApiKey, setCivitaiApiKey] = React.useState<string>()
@@ -28,7 +31,6 @@ function SettingsUI() {
         }
     }, [getSettingsQuery.data])
 
-    const { toast } = useToast()
 
     const setCivitaiCredentialsMutation = useMutation({
         mutationFn: async ({
@@ -53,9 +55,7 @@ function SettingsUI() {
             return data
         },
         onSuccess: async () => {
-            toast({
-                title: 'Saved your settings!',
-            })
+            toast.success('Saved your settings!')
         },
     })
 
@@ -64,58 +64,71 @@ function SettingsUI() {
     }
 
     return (
-        <>
-            <div className="flex flex-col p-10">
-                <div className="flex flex-col space-y-2">
-                    <Label htmlFor="name" className="text-left">
-                        CivitAI API Key
-                    </Label>
-                    <Input
-                        id="name"
-                        placeholder="Your CivitAI API key"
-                        className="w-fit"
-                        value={civitaiApiKey}
-                        required
-                        onChange={(e) => setCivitaiApiKey(e.target.value)}
-                    />
-                    <p className="text-xs font-medium text-gray-600">
-                        You can get your CivitAI API key from your{' '}
-                        <a
-                            href="https://civitai.com/user/account"
-                            target="_blank"
-                            rel="noreferrer"
+        <div className="flex flex-col p-6 max-w-6xl mx-auto">
+            <div className="grid gap-6 md:grid-cols-2">
+                {/* API Settings Card */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center gap-2">
+                            <KeyIcon className="h-5 w-5 text-primary" />
+                            <CardTitle>API Configuration</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Configure external service API keys
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="civitai-key" className="text-sm font-medium">
+                                CivitAI API Key
+                            </Label>
+                            <Input
+                                id="civitai-key"
+                                type="password"
+                                placeholder="Your CivitAI API key"
+                                className="font-mono"
+                                value={civitaiApiKey}
+                                onChange={(e) => setCivitaiApiKey(e.target.value)}
+                            />
+                            <div className="text-xs text-muted-foreground space-y-2">
+                                <p>
+                                    Get your API key from your{' '}
+                                    <a
+                                        href="https://civitai.com/user/account"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-primary hover:underline inline-flex items-center gap-1"
+                                    >
+                                        CivitAI account settings
+                                        <ExternalLinkIcon className="h-3 w-3" />
+                                    </a>
+                                </p>
+                                <p className="text-xs">
+                                    This key is stored locally and only used to download models from CivitAI.
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            onClick={(e) => {
+                                e.preventDefault()
+                                setCivitaiCredentialsMutation.mutate({
+                                    civitai_api_key: civitaiApiKey || '',
+                                })
+                            }}
+                            disabled={setCivitaiCredentialsMutation.isPending}
+                            className="w-full"
                         >
-                            CivitAI account settings page
-                        </a>
-                        .
-                        <br />
-                        Scroll to the bottom of the page to the section titled
-                        &quot;API Keys&quot;, and create one.
-                        <br />
-                        <br />
-                        This key is saved locally and ONLY used to download
-                        missing models directly from CivitAI. It is NEVER sent
-                        anywhere else.
-                    </p>
-                </div>
-                <div>
-                    <Button
-                        onClick={(e) => {
-                            e.preventDefault()
-                            setCivitaiCredentialsMutation.mutate({
-                                civitai_api_key: civitaiApiKey || '',
-                            })
-                        }}
-                        variant="default"
-                        className="mt-5"
-                    >
-                        {setCivitaiCredentialsMutation.isPending
-                            ? 'Saving...'
-                            : 'Save'}
-                    </Button>
-                </div>
+                            {setCivitaiCredentialsMutation.isPending
+                                ? 'Saving...'
+                                : 'Save API Settings'}
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                {/* Keyboard Shortcuts Card */}
+                <KeyboardShortcuts />
             </div>
-        </>
+        </div>
     )
 }
 
