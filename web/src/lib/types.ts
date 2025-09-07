@@ -87,3 +87,53 @@ export type ResolvedMissingModelFile = {
     dest_relative_path: string
     source: Source
 }
+
+// Recovery System Types
+export type RecoveryState = 
+    | 'pending'
+    | 'in_progress'
+    | 'success'
+    | 'failed'
+    | 'recovering'
+    | 'exhausted'
+
+export type RecoveryStatus = {
+    operation_id: string
+    operation_name: string
+    state: RecoveryState
+    attempt: number
+    max_attempts: number
+    error?: string
+    started_at: string
+    updated_at: string
+    progress?: number
+    estimated_completion?: string
+}
+
+export type ProjectRecoveryInfo = {
+    project_id: string
+    active_operations: RecoveryStatus[]
+    total_attempts: number
+    last_recovery_at?: string
+}
+
+export type DownloadRecoveryStatus = {
+    url: string
+    dest_path: string
+    status: 'pending' | 'downloading' | 'completed' | 'failed' | 'recovering'
+    bytes_downloaded: number
+    total_bytes: number
+    progress: number
+    attempts: number
+    error?: string
+    speed_bps?: number
+}
+
+// WebSocket Recovery Events
+export type RecoveryWebSocketEvents = {
+    recovery_started: RecoveryStatus
+    recovery_progress: RecoveryStatus & { progress: number }
+    recovery_completed: RecoveryStatus
+    recovery_failed: RecoveryStatus & { error: string }
+    download_recovery: DownloadRecoveryStatus
+}
