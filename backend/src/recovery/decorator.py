@@ -8,12 +8,13 @@ import time
 import traceback
 import uuid
 from typing import Any, Callable, Optional, TypeVar, Union, cast
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .types import (
     RecoveryConfig, RecoveryData, RecoveryState, RecoveryStrategy,
     StatePersistence, ErrorCategory
 )
+from .classification import ErrorClassifier
 from .exceptions import (
     RecoveryExhaustedError, CircuitBreakerOpenError, RecoveryTimeoutError
 )
@@ -141,7 +142,8 @@ def recoverable(
     persistence: Optional[StatePersistence] = None,
     strategy: Optional[RecoveryStrategy] = None,
     circuit_breaker_threshold: Optional[int] = None,
-    circuit_breaker_timeout: Optional[float] = None
+    circuit_breaker_timeout: Optional[float] = None,
+    classifier: Optional[ErrorClassifier] = None
 ) -> Callable[[F], F]:
     """
     Decorator to add recovery capabilities to functions.
@@ -156,6 +158,7 @@ def recoverable(
         strategy: Custom recovery strategy (default: None)
         circuit_breaker_threshold: Number of failures before opening circuit (default: 5)
         circuit_breaker_timeout: Time in seconds before circuit closes (default: 300.0)
+        classifier: Error classifier for intelligent error handling (default: None)
     
     Returns:
         Decorated function with recovery capabilities
@@ -173,6 +176,9 @@ def recoverable(
             persistence=persistence,
             strategy=strategy
         )
+        
+        # Create classifier if not provided
+        error_classifier = classifier or ErrorClassifier()
         
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -216,7 +222,7 @@ def recoverable(
                     # Success - update state
                     circuit_breaker.record_success()
                     recovery_data.state = RecoveryState.SUCCESS
-                    recovery_data.updated_at = datetime.utcnow()
+                    recovery_data.updated_at = datetime.now(timezone.utc)
                     
                     if config.persistence:
                         await config.persistence.save(recovery_data)
@@ -239,15 +245,28 @@ def recoverable(
                 # Record failure
                 circuit_breaker.record_failure()
                 
-                # Check if we should retry
-                error_category = _classify_error(last_error)
+                # Classify error with context
+                context = {
+                    'operation_id': operation_id,
+                    'function_name': func_name,
+                    'attempt': attempt,
+                    'args': args,
+                    'kwargs': kwargs
+                }
+                
+                classification = error_classifier.classify(last_error, context)
                 
                 # Update recovery data
                 recovery_data.attempt = attempt
                 recovery_data.error = last_error
                 recovery_data.state = RecoveryState.RECOVERING
-                recovery_data.updated_at = datetime.utcnow()
-                recovery_data.metadata['error_category'] = error_category.value
+                recovery_data.updated_at = datetime.now(timezone.utc)
+                recovery_data.metadata.update({
+                    'error_category': classification.category.value,
+                    'error_severity': classification.severity.value,
+                    'error_recoverable': classification.is_recoverable,
+                    'classification_confidence': classification.confidence
+                })
                 
                 if config.persistence:
                     await config.persistence.save(recovery_data)
@@ -255,22 +274,23 @@ def recoverable(
                 # Determine if we should retry
                 if config.strategy:
                     should_retry = config.strategy.should_retry(last_error, attempt, config.max_retries)
+                    delay = config.strategy.calculate_delay(attempt) if should_retry else 0
                 else:
-                    # Default retry logic - don't retry permission/validation errors
-                    should_retry = error_category not in [ErrorCategory.PERMISSION, ErrorCategory.VALIDATION]
+                    # Use classifier to get strategy
+                    recovery_strategy, strategy_config = error_classifier.get_recovery_strategy(classification)
+                    
+                    if recovery_strategy and classification.is_recoverable:
+                        should_retry = recovery_strategy.should_retry(last_error, attempt, strategy_config.max_retries)
+                        delay = recovery_strategy.calculate_delay(attempt) if should_retry else 0
+                        # Override max retries if strategy suggests different
+                        if attempt >= strategy_config.max_retries:
+                            should_retry = False
+                    else:
+                        should_retry = False
+                        delay = 0
                 
                 if not should_retry or attempt >= config.max_retries:
                     break
-                
-                # Calculate delay
-                if config.strategy:
-                    delay = config.strategy.calculate_delay(attempt)
-                else:
-                    # Default exponential backoff
-                    delay = min(
-                        config.initial_delay * (config.backoff_factor ** attempt),
-                        config.max_delay
-                    )
                 
                 logger.info(f"Retrying {func_name} after {delay}s delay")
                 await asyncio.sleep(delay)
@@ -278,7 +298,7 @@ def recoverable(
             
             # All retries exhausted
             recovery_data.state = RecoveryState.EXHAUSTED
-            recovery_data.updated_at = datetime.utcnow()
+            recovery_data.updated_at = datetime.now(timezone.utc)
             
             if config.persistence:
                 await config.persistence.save(recovery_data)

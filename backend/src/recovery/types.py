@@ -4,7 +4,7 @@ Shared type definitions for the recovery system.
 from typing import Any, Callable, Dict, Optional, Protocol, TypeVar, Union
 from enum import Enum
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # Type variables
@@ -73,8 +73,8 @@ class RecoveryData:
         self.attempt = attempt
         self.error = error
         self.metadata = metadata or {}
-        self.created_at = created_at or datetime.utcnow()
-        self.updated_at = updated_at or datetime.utcnow()
+        self.created_at = created_at or datetime.now(timezone.utc)
+        self.updated_at = updated_at or datetime.now(timezone.utc)
     
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
