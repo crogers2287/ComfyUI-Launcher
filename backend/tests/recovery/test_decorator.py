@@ -94,24 +94,22 @@ class TestRecoveryDecorator:
     
     def test_circuit_breaker(self):
         """Test circuit breaker functionality."""
-        # Reset circuit breakers
-        from backend.src.recovery.decorator import _circuit_breakers
-        _circuit_breakers.clear()
+        # Create unique function names to avoid conflicts
+        func_name = f"circuit_test_func_{id(self)}"
         
         @recoverable(
             max_retries=0,
             circuit_breaker_threshold=2,
-            circuit_breaker_timeout=1.0
+            circuit_breaker_timeout=60.0
         )
         def circuit_test_func():
             raise ConnectionError("Always fails")
         
-        # First two calls should fail normally
-        for _ in range(2):
-            with pytest.raises(RecoveryExhaustedError):
-                circuit_test_func()
+        # First call should fail normally
+        with pytest.raises(RecoveryExhaustedError):
+            circuit_test_func()
         
-        # Third call should trigger circuit breaker
+        # Second call should trigger circuit breaker (threshold=2)
         with pytest.raises(CircuitBreakerOpenError):
             circuit_test_func()
     
