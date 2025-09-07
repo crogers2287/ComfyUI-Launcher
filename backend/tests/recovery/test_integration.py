@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import tempfile
 
 from backend.src.recovery import recoverable, RecoveryConfig
-from backend.src.recovery.persistence import SQLitePersistence
+from backend.src.recovery.persistence import SQLAlchemyPersistence
 from backend.src.recovery.strategies import ExponentialBackoffStrategy
 
 
@@ -198,7 +198,7 @@ class TestIntegration:
         with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tf:
             db_path = tf.name
         
-        persistence = SQLitePersistence(db_path)
+        persistence = SQLAlchemyPersistence(f"sqlite+aiosqlite:///{db_path}")
         strategy = ExponentialBackoffStrategy(
             initial_delay=0.05,
             backoff_factor=2.0,
