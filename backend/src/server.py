@@ -1465,6 +1465,289 @@ def serve_vite_svg():
     """Serve the vite.svg favicon"""
     return send_from_directory("../../web/dist", "vite.svg")
 
+# Download Management APIs for Issue #12 - Download Resume Enhancement
+@app.route("/api/downloads", methods=["GET"])
+def list_downloads():
+    """List all active downloads with their current state"""
+    try:
+        from utils import DownloadManager
+        
+        # Get global download manager instance
+        download_manager = DownloadManager.get_instance()
+        
+        # Get current download states
+        active_downloads = []
+        if hasattr(download_manager, 'active_downloads'):
+            for download_id, download_info in download_manager.active_downloads.items():
+                active_downloads.append({
+                    "id": download_id,
+                    "url": download_info.get("url", ""),
+                    "dest_path": download_info.get("dest_path", ""),
+                    "status": download_info.get("status", "unknown"),
+                    "progress": download_info.get("progress", 0),
+                    "bytes_downloaded": download_info.get("bytes_downloaded", 0),
+                    "total_bytes": download_info.get("total_bytes", 0),
+                    "speed": download_info.get("speed", 0),
+                    "eta": download_info.get("eta", 0),
+                    "attempts": download_info.get("attempts", 0),
+                    "error": download_info.get("error", None),
+                    "created_at": download_info.get("created_at", ""),
+                    "updated_at": download_info.get("updated_at", "")
+                })
+        
+        return jsonify({
+            "success": True,
+            "downloads": active_downloads,
+            "total_count": len(active_downloads)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to list downloads: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/<download_id>", methods=["GET"])
+def get_download(download_id):
+    """Get specific download details"""
+    try:
+        from utils import DownloadManager
+        
+        download_manager = DownloadManager.get_instance()
+        
+        if not hasattr(download_manager, 'active_downloads') or download_id not in download_manager.active_downloads:
+            return jsonify({
+                "success": False,
+                "error": "Download not found"
+            }), 404
+        
+        download_info = download_manager.active_downloads[download_id]
+        
+        return jsonify({
+            "success": True,
+            "download": {
+                "id": download_id,
+                "url": download_info.get("url", ""),
+                "dest_path": download_info.get("dest_path", ""),
+                "status": download_info.get("status", "unknown"),
+                "progress": download_info.get("progress", 0),
+                "bytes_downloaded": download_info.get("bytes_downloaded", 0),
+                "total_bytes": download_info.get("total_bytes", 0),
+                "speed": download_info.get("speed", 0),
+                "eta": download_info.get("eta", 0),
+                "attempts": download_info.get("attempts", 0),
+                "error": download_info.get("error", None),
+                "created_at": download_info.get("created_at", ""),
+                "updated_at": download_info.get("updated_at", ""),
+                "can_resume": download_info.get("can_resume", False),
+                "can_pause": download_info.get("can_pause", False)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to get download: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/<download_id>/pause", methods=["POST"])
+def pause_download(download_id):
+    """Pause a specific download"""
+    try:
+        from utils import DownloadManager
+        
+        download_manager = DownloadManager.get_instance()
+        
+        if not hasattr(download_manager, 'active_downloads') or download_id not in download_manager.active_downloads:
+            return jsonify({
+                "success": False,
+                "error": "Download not found"
+            }), 404
+        
+        # Check if download can be paused
+        download_info = download_manager.active_downloads[download_id]
+        if not download_info.get("can_pause", False):
+            return jsonify({
+                "success": False,
+                "error": "Download cannot be paused"
+            }), 400
+        
+        # Implement pause logic (this would need to be added to DownloadManager)
+        if hasattr(download_manager, 'pause_download'):
+            download_manager.pause_download(download_id)
+            return jsonify({
+                "success": True,
+                "message": "Download paused successfully"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Pause functionality not implemented"
+            }), 501
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to pause download: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/<download_id>/resume", methods=["POST"])
+def resume_download(download_id):
+    """Resume a paused or failed download"""
+    try:
+        from utils import DownloadManager
+        
+        download_manager = DownloadManager.get_instance()
+        
+        # Check if download exists and can be resumed
+        if not hasattr(download_manager, 'active_downloads') or download_id not in download_manager.active_downloads:
+            return jsonify({
+                "success": False,
+                "error": "Download not found"
+            }), 404
+        
+        download_info = download_manager.active_downloads[download_id]
+        if not download_info.get("can_resume", False):
+            return jsonify({
+                "success": False,
+                "error": "Download cannot be resumed"
+            }), 400
+        
+        # Implement resume logic
+        if hasattr(download_manager, 'resume_download'):
+            download_manager.resume_download(download_id)
+            return jsonify({
+                "success": True,
+                "message": "Download resumed successfully"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Resume functionality not implemented"
+            }), 501
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to resume download: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/<download_id>/cancel", methods=["POST"])
+def cancel_download(download_id):
+    """Cancel a download"""
+    try:
+        from utils import DownloadManager
+        
+        download_manager = DownloadManager.get_instance()
+        
+        if not hasattr(download_manager, 'active_downloads') or download_id not in download_manager.active_downloads:
+            return jsonify({
+                "success": False,
+                "error": "Download not found"
+            }), 404
+        
+        # Implement cancel logic
+        if hasattr(download_manager, 'cancel_download'):
+            download_manager.cancel_download(download_id)
+            return jsonify({
+                "success": True,
+                "message": "Download cancelled successfully"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Cancel functionality not implemented"
+            }), 501
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to cancel download: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/settings", methods=["GET"])
+def get_download_settings():
+    """Get current download settings"""
+    try:
+        from utils import DownloadManager
+        
+        download_manager = DownloadManager.get_instance()
+        
+        settings = {
+            "max_concurrent_downloads": getattr(download_manager, 'max_concurrent_downloads', 3),
+            "max_retries": getattr(download_manager, 'max_retries', 5),
+            "chunk_size": getattr(download_manager, 'chunk_size', 1024 * 1024),
+            "timeout": getattr(download_manager, 'timeout', 30),
+            "bandwidth_limit": getattr(download_manager, 'bandwidth_limit', 0),  # 0 = unlimited
+            "auto_resume": getattr(download_manager, 'auto_resume', True),
+            "verify_checksums": getattr(download_manager, 'verify_checksums', True)
+        }
+        
+        return jsonify({
+            "success": True,
+            "settings": settings
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to get download settings: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/settings", methods=["POST"])
+def update_download_settings():
+    """Update download settings"""
+    try:
+        from utils import DownloadManager
+        
+        download_manager = DownloadManager.get_instance()
+        data = request.get_json()
+        
+        # Update settings
+        if 'max_concurrent_downloads' in data:
+            download_manager.max_concurrent_downloads = int(data['max_concurrent_downloads'])
+        if 'max_retries' in data:
+            download_manager.max_retries = int(data['max_retries'])
+        if 'chunk_size' in data:
+            download_manager.chunk_size = int(data['chunk_size'])
+        if 'timeout' in data:
+            download_manager.timeout = int(data['timeout'])
+        if 'bandwidth_limit' in data:
+            download_manager.bandwidth_limit = int(data['bandwidth_limit'])
+        if 'auto_resume' in data:
+            download_manager.auto_resume = bool(data['auto_resume'])
+        if 'verify_checksums' in data:
+            download_manager.verify_checksums = bool(data['verify_checksums'])
+        
+        return jsonify({
+            "success": True,
+            "message": "Download settings updated successfully"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to update download settings: {str(e)}"
+        }), 500
+
+@app.route("/api/downloads/history", methods=["GET"])
+def get_download_history():
+    """Get download history (completed downloads)"""
+    try:
+        # This would query a download history table or log
+        # For now, return empty as history tracking isn't implemented yet
+        return jsonify({
+            "success": True,
+            "history": [],
+            "total_count": 0
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to get download history: {str(e)}"
+        }), 500
+
 # Catch-all route for client-side routing - MUST BE LAST
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
