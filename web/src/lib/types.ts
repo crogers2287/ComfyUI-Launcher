@@ -87,3 +87,46 @@ export type ResolvedMissingModelFile = {
     dest_relative_path: string
     source: Source
 }
+
+// Download Management Types for Issue #12
+export type DownloadStatus = 'pending' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled'
+
+export type DownloadInfo = {
+    id: string
+    url: string
+    dest_path: string
+    status: DownloadStatus
+    progress: number
+    bytes_downloaded: number
+    total_bytes: number
+    speed: number
+    eta: number
+    attempts: number
+    error?: string
+    created_at: string
+    updated_at: string
+    can_resume: boolean
+    can_pause: boolean
+}
+
+export type DownloadSettings = {
+    max_concurrent_downloads: number
+    max_retries: number
+    chunk_size: number
+    timeout: number
+    bandwidth_limit: number
+    auto_resume: boolean
+    verify_checksums: boolean
+}
+
+export type DownloadHistoryItem = {
+    id: string
+    url: string
+    dest_path: string
+    status: DownloadStatus
+    bytes_downloaded: number
+    total_bytes: number
+    completed_at: string
+    duration: number
+    speed_avg: number
+}

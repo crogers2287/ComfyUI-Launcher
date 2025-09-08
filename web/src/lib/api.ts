@@ -1,4 +1,9 @@
 // API client for ComfyUI Launcher backend
+import type {
+  DownloadInfo,
+  DownloadSettings,
+  DownloadHistoryItem
+} from './types'
 
 // Storage API types
 export interface StorageUsage {
@@ -200,6 +205,74 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify({ workflow_json: workflowJson }),
     })
+  }
+
+  // Download Management APIs for Issue #12
+  async getDownloads(): Promise<{
+    success: boolean
+    downloads: DownloadInfo[]
+    total_count: number
+  }> {
+    return this.fetch('/downloads')
+  }
+
+  async getDownload(downloadId: string): Promise<{
+    success: boolean
+    download: DownloadInfo
+  }> {
+    return this.fetch(`/downloads/${downloadId}`)
+  }
+
+  async pauseDownload(downloadId: string): Promise<{
+    success: boolean
+    message: string
+  }> {
+    return this.fetch(`/downloads/${downloadId}/pause`, {
+      method: 'POST',
+    })
+  }
+
+  async resumeDownload(downloadId: string): Promise<{
+    success: boolean
+    message: string
+  }> {
+    return this.fetch(`/downloads/${downloadId}/resume`, {
+      method: 'POST',
+    })
+  }
+
+  async cancelDownload(downloadId: string): Promise<{
+    success: boolean
+    message: string
+  }> {
+    return this.fetch(`/downloads/${downloadId}/cancel`, {
+      method: 'POST',
+    })
+  }
+
+  async getDownloadSettings(): Promise<{
+    success: boolean
+    settings: DownloadSettings
+  }> {
+    return this.fetch('/downloads/settings')
+  }
+
+  async updateDownloadSettings(settings: Partial<DownloadSettings>): Promise<{
+    success: boolean
+    message: string
+  }> {
+    return this.fetch('/downloads/settings', {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    })
+  }
+
+  async getDownloadHistory(): Promise<{
+    success: boolean
+    history: DownloadHistoryItem[]
+    total_count: number
+  }> {
+    return this.fetch('/downloads/history')
   }
 }
 
