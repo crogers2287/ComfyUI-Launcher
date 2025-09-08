@@ -1,8 +1,10 @@
 'use client'
 
-import { Project, Settings } from '@/lib/types'
+import { Project, Settings, ProjectRecoveryInfo, RecoveryStatus, DownloadRecoveryStatus } from '@/lib/types'
 import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { RecoveryProgress } from './RecoveryProgress'
 import React, { useEffect } from 'react'
 import {
     AlertDialog,
@@ -15,13 +17,24 @@ import {
     AlertDialogTitle,
 } from './ui/alert-dialog'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
-import { Loader2Icon, PlayIcon, StopCircleIcon, TrashIcon, ExternalLinkIcon } from 'lucide-react'
+import { 
+    Loader2Icon, 
+    PlayIcon, 
+    StopCircleIcon, 
+    TrashIcon, 
+    ExternalLinkIcon,
+    RefreshCw,
+    Pause,
+    AlertTriangle,
+    Download
+} from 'lucide-react'
 import { DialogDescription } from '@radix-ui/react-dialog'
 import { cn } from '@/lib/utils'
 
 type ProjectCardProps = {
     item: Project
     settings: Settings
+    recoveryInfo?: ProjectRecoveryInfo
 }
 
 const getProjectURL = (port: number, settings: Settings) => {
@@ -46,7 +59,7 @@ const getProjectURL = (port: number, settings: Settings) => {
     return location.origin.replace(/:[0-9]+$/, `:${port}`)
 }
 
-function ProjectCard({ item, settings }: ProjectCardProps) {
+function ProjectCard({ item, settings, recoveryInfo }: ProjectCardProps) {
     const queryClient = useQueryClient()
 
     const [deleteProjectDialogOpen, setDeleteProjectDialogOpen] =
@@ -57,6 +70,7 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
     >()
     const [projectStatusDialogOpen, setProjectStatusDialogOpen] =
         React.useState(false)
+    const [downloadStatuses] = React.useState<Map<string, DownloadRecoveryStatus>>(new Map())
 
     const launchProjectMutation = useMutation({
         mutationFn: async () => {
@@ -127,6 +141,72 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
         deleteProjectMutation.isPending,
     ])
 
+    // Recovery info helpers
+    const activeRecoveryOperations = recoveryInfo?.active_operations?.filter(
+        op => op.state === 'recovering' || op.state === 'in_progress'
+    ) || []
+    
+    const hasActiveRecovery = activeRecoveryOperations.length > 0
+    const totalRecoveryAttempts = recoveryInfo?.total_attempts || 0
+
+    const getRecoveryStatusIcon = (operation: RecoveryStatus) => {
+        switch (operation.state) {
+            case 'recovering':
+                return <RefreshCw className="h-3 w-3 animate-spin" />
+            case 'in_progress':
+                return <Loader2Icon className="h-3 w-3 animate-spin" />
+            case 'pending':
+                return <Pause className="h-3 w-3" />
+            case 'failed':
+            case 'exhausted':
+                return <AlertTriangle className="h-3 w-3" />
+            default:
+                return null
+        }
+    }
+
+    const pauseRecovery = async (operationId: string) => {
+        try {
+            const response = await fetch(`/api/recovery/${operationId}/pause`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            if (!response.ok) {
+                throw new Error('Failed to pause recovery')
+            }
+        } catch (error) {
+            console.error('Failed to pause recovery:', error)
+        }
+    }
+
+    const resumeRecovery = async (operationId: string) => {
+        try {
+            const response = await fetch(`/api/recovery/${operationId}/resume`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            if (!response.ok) {
+                throw new Error('Failed to resume recovery')
+            }
+        } catch (error) {
+            console.error('Failed to resume recovery:', error)
+        }
+    }
+
+    const cancelRecovery = async (operationId: string) => {
+        try {
+            const response = await fetch(`/api/recovery/${operationId}/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            if (!response.ok) {
+                throw new Error('Failed to cancel recovery')
+            }
+        } catch (error) {
+            console.error('Failed to cancel recovery:', error)
+        }
+    }
+
     return (
         <>
             <Dialog
@@ -188,16 +268,31 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
                     item.state.state === 'running' && 'ring-2 ring-primary/20'
                 )}
             >
-                {/* Status Indicator */}
-                <div className="absolute top-3 right-3">
+                {/* Status Indicators */}
+                <div className="absolute top-3 right-3 flex items-center gap-2">
+                    {/* Recovery Status */}
+                    {hasActiveRecovery && (
+                        <Badge variant="outline" className="text-xs flex items-center gap-1">
+                            <RefreshCw className="h-3 w-3 animate-spin" />
+                            Recovery ({activeRecoveryOperations.length})
+                        </Badge>
+                    )}
+                    {totalRecoveryAttempts > 0 && !hasActiveRecovery && (
+                        <Badge variant="secondary" className="text-xs">
+                            {totalRecoveryAttempts} attempts
+                        </Badge>
+                    )}
+                    
+                    {/* Project Status */}
                     <div
                         className={cn(
                             'h-3 w-3 rounded-full',
                             item.state.state === 'ready' && 'bg-gray-400',
                             item.state.state === 'running' && 'bg-green-500 animate-pulse',
-                            item.state.state !== 'ready' && item.state.state !== 'running' && 'bg-yellow-500'
+                            item.state.state !== 'ready' && item.state.state !== 'running' && 'bg-yellow-500',
+                            hasActiveRecovery && 'ring-2 ring-blue-500/50'
                         )}
-                        title={item.state.state}
+                        title={hasActiveRecovery ? `${item.state.state} (recovering)` : item.state.state}
                     />
                 </div>
 
@@ -219,6 +314,99 @@ function ProjectCard({ item, settings }: ProjectCardProps) {
                             <p className='text-sm italic text-muted-foreground'>
                                 {item.state.status_message}
                             </p>
+                        </div>
+                    )}
+
+                    {/* Recovery Operations */}
+                    {activeRecoveryOperations.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                Active Recovery Operations
+                            </div>
+                            {activeRecoveryOperations.slice(0, 2).map((operation) => (
+                                <div key={operation.operation_id} className="bg-muted/50 rounded p-2 text-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            {getRecoveryStatusIcon(operation)}
+                                            <span className="truncate">{operation.operation_name}</span>
+                                            <Badge variant="outline" className="text-xs">
+                                                {operation.attempt}/{operation.max_attempts}
+                                            </Badge>
+                                        </div>
+                                        <div className="flex gap-1 ml-2">
+                                            {(operation.state === 'recovering' || operation.state === 'in_progress') && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0"
+                                                    onClick={() => pauseRecovery(operation.operation_id)}
+                                                    title="Pause recovery"
+                                                >
+                                                    <Pause className="h-3 w-3" />
+                                                </Button>
+                                            )}
+                                            {operation.state === 'pending' && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0"
+                                                    onClick={() => resumeRecovery(operation.operation_id)}
+                                                    title="Resume recovery"
+                                                >
+                                                    <PlayIcon className="h-3 w-3" />
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0 hover:text-destructive"
+                                                onClick={() => cancelRecovery(operation.operation_id)}
+                                                title="Cancel recovery"
+                                            >
+                                                <TrashIcon className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    {operation.error && (
+                                        <div className="text-xs text-destructive mt-1 truncate">
+                                            {operation.error}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            {activeRecoveryOperations.length > 2 && (
+                                <div className="text-xs text-muted-foreground text-center">
+                                    ... and {activeRecoveryOperations.length - 2} more operations
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Download Recovery Progress */}
+                    {downloadStatuses.size > 0 && (
+                        <div className="space-y-2">
+                            <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                                <Download className="h-4 w-4" />
+                                Download Recovery Progress
+                            </div>
+                            {Array.from(downloadStatuses.values()).slice(0, 2).map((downloadStatus) => (
+                                <RecoveryProgress
+                                    key={downloadStatus.url}
+                                    recoveryStatus={downloadStatus}
+                                    showRetryIndicator={true}
+                                    showSpeedInfo={true}
+                                    onPause={() => pauseRecovery(downloadStatus.url)}
+                                    onResume={() => resumeRecovery(downloadStatus.url)}
+                                    onCancel={() => cancelRecovery(downloadStatus.url)}
+                                    className="text-xs"
+                                />
+                            ))}
+                            {downloadStatuses.size > 2 && (
+                                <div className="text-xs text-muted-foreground text-center">
+                                    ... and {downloadStatuses.size - 2} more downloads
+                                </div>
+                            )}
                         </div>
                     )}
                     

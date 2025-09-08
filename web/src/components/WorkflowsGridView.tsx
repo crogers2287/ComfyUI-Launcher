@@ -1,19 +1,56 @@
 'use client'
 
-import { Project, Settings } from '@/lib/types'
+import { Project, Settings, ProjectRecoveryInfo } from '@/lib/types'
 import { useQuery } from '@tanstack/react-query'
 import { Masonry } from 'masonic'
 import ProjectCard from './ProjectCard'
 import { SearchInput } from './ui/search-input'
 import { Button } from './ui/button'
 import { ArrowDownIcon, ArrowUpIcon, CalendarIcon, TextIcon } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { StorageIndicator } from './StorageIndicator'
+import { useGlobalRecovery } from '@/hooks/use-recovery-socket'
 
 function WorkflowsGridView() {
     const [searchQuery, setSearchQuery] = useState('')
     const [sortBy, setSortBy] = useState<'name' | 'date'>('date')
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+    const [projectRecoveryInfo, setProjectRecoveryInfo] = useState<Map<string, ProjectRecoveryInfo>>(new Map())
+    
+    const { recoveryOperations } = useGlobalRecovery()
+
+    // Update project recovery info based on recovery operations
+    useEffect(() => {
+        const newRecoveryInfo = new Map<string, ProjectRecoveryInfo>()
+        
+        recoveryOperations.forEach(operation => {
+            // Extract project ID from operation ID if possible
+            const projectIdMatch = operation.operation_id.match(/^([^_]+)_/)
+            const projectId = projectIdMatch ? projectIdMatch[1] : 'global'
+            
+            const existing = newRecoveryInfo.get(projectId) || {
+                project_id: projectId,
+                active_operations: [],
+                total_attempts: 0,
+                last_recovery_at: undefined
+            }
+            
+            // Update active operations
+            const activeOps = existing.active_operations.filter(op => op.operation_id !== operation.operation_id)
+            if (operation.state === 'recovering' || operation.state === 'in_progress') {
+                activeOps.push(operation)
+            }
+            
+            newRecoveryInfo.set(projectId, {
+                ...existing,
+                active_operations: activeOps,
+                total_attempts: existing.total_attempts + (operation.attempt > 1 ? 1 : 0),
+                last_recovery_at: operation.updated_at
+            })
+        })
+        
+        setProjectRecoveryInfo(newRecoveryInfo)
+    }, [recoveryOperations])
 
     const getProjectsQuery = useQuery({
         queryKey: ['projects'],
@@ -149,7 +186,13 @@ function WorkflowsGridView() {
                     columnGutter={20}
                     columnWidth={350}
                     items={filteredAndSortedProjects}
-                    render={(props) => <ProjectCard settings={getSettingsQuery.data} item={props.data} />}
+                    render={(props) => (
+                        <ProjectCard 
+                            settings={getSettingsQuery.data} 
+                            item={props.data}
+                            recoveryInfo={projectRecoveryInfo.get(props.data.id)}
+                        />
+                    )}
                 />
             )}
         </div>

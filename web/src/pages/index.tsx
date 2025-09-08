@@ -1,11 +1,25 @@
+'use client'
+
 import { Nav } from '../components/Nav'
 import WorkflowsGridView from '../components/WorkflowsGridView'
+import RecoveryBanner from '../components/RecoveryBanner'
+import { useGlobalRecovery } from '../hooks/use-recovery-socket'
 
 function IndexPage() {
+    const { recoveryOperations, clearCompletedOperations } = useGlobalRecovery()
+
     return (
         <main className="flex min-h-screen flex-col">
             <div>
                 <Nav />
+            </div>
+
+            {/* Global Recovery Banner */}
+            <div className="p-5 pt-0">
+                <RecoveryBanner 
+                    recoveryOperations={recoveryOperations}
+                    onDismiss={clearCompletedOperations}
+                />
             </div>
 
             <div className="flex flex-row space-x-5 p-5">
