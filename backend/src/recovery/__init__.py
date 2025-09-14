@@ -40,6 +40,9 @@ except ImportError:
     RecoveryStrategy = None
     StatePersistence = None
 
+# Export availability flag for external use
+RECOVERY_AVAILABLE = _FULL_RECOVERY_AVAILABLE
+
 # Download enhancements (issue #5)
 from .download_manager import RecoverableDownloadManager, DownloadState
 from .download_persistence import DownloadPersistence
@@ -70,6 +73,9 @@ __all__ = [
     'CircuitBreakerOpenError',
     'RecoveryTimeoutError',
     'RecoveryStateError',
+    
+    # Availability flag
+    'RECOVERY_AVAILABLE',
     
     # Download Enhancement (issue #5)
     'RecoverableDownloadManager',

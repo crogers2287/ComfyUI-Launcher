@@ -9,6 +9,13 @@ from typing import Dict, List, Optional
 from model_finder import ModelFinder
 from utils import DownloadManager
 
+# Import recovery components
+try:
+    from .recovery import recoverable
+    RECOVERY_AVAILABLE = True
+except ImportError:
+    RECOVERY_AVAILABLE = False
+
 # Known model mappings for common checkpoints
 KNOWN_MODELS = {
     "v1-5-pruned-emaonly-fp16.safetensors": {
@@ -267,6 +274,21 @@ def detect_missing_models(workflow_json: dict, project_path: str) -> List[Dict]:
             seen.add(key)
     
     return final_models
+
+# Apply recovery decorator to auto_download_models if available
+if RECOVERY_AVAILABLE:
+    auto_download_models = recoverable(
+        max_retries=3,
+        initial_delay=5.0,
+        backoff_factor=2.0,
+        max_delay=300.0,
+        timeout=1800.0,  # 30 minutes for auto download
+        circuit_breaker_threshold=3,
+        circuit_breaker_timeout=600.0  # 10 minutes
+    )(auto_download_models)
+else:
+    # If recovery not available, use original function
+    pass
 
 def auto_download_models(project_path: str, workflow_json: dict, log_callback=None) -> Dict:
     """Automatically find and download all missing models for a workflow"""
