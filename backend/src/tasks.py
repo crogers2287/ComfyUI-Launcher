@@ -6,6 +6,40 @@ from utils import COMFYUI_REPO_URL, create_symlink, create_virtualenv, install_d
 from progress_tracker import update_progress, add_log_entry
 from auto_model_downloader import auto_download_models
 
+# Import recovery components for Celery tasks
+try:
+    from .recovery import recoverable
+    RECOVERY_AVAILABLE = True
+except ImportError:
+    RECOVERY_AVAILABLE = False
+
+# Apply recovery decorator to create_comfyui_project if available
+if RECOVERY_AVAILABLE:
+    # For Celery tasks, we need to handle the bound task differently
+    def recoverable_create_comfyui_project(self, *args, **kwargs):
+        @recoverable(
+            max_retries=3,
+            initial_delay=10.0,
+            backoff_factor=2.0,
+            max_delay=1800.0,  # 30 minutes max delay
+            timeout=7200.0,  # 2 hours timeout for full project creation
+            circuit_breaker_threshold=3,
+            circuit_breaker_timeout=1800.0  # 30 minutes circuit breaker timeout
+        )
+        def wrapper(*args, **kwargs):
+            # Original implementation
+            return original_create_comfyui_project(self, *args, **kwargs)
+        return wrapper(*args, **kwargs)
+    
+    # Store original task function
+    original_create_comfyui_project = create_comfyui_project
+    
+    # Apply recovery wrapper
+    def create_comfyui_project_with_recovery(self, *args, **kwargs):
+        return recoverable_create_comfyui_project(self, *args, **kwargs)
+    
+    create_comfyui_project = create_comfyui_project_with_recovery
+
 @shared_task(ignore_result=False, bind=True)
 def create_comfyui_project(
     self, project_folder_path, models_folder_path, id, name, launcher_json=None, port=None, create_project_folder=True, pending_assets=None

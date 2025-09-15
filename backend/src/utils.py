@@ -13,12 +13,23 @@ import traceback
 import concurrent.futures
 import zipfile
 import tempfile
+import uuid
+import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set, Union
 from dataclasses import dataclass, field
 from tqdm import tqdm
 from urllib.parse import urlparse
 from settings import PROJECT_MAX_PORT, PROJECT_MIN_PORT, PROJECTS_DIR
+
+# Import recovery components
+try:
+    from .recovery import recoverable
+    from .recovery.persistence import SQLitePersistence
+    from .recovery.strategies import ExponentialBackoffStrategy
+    RECOVERY_AVAILABLE = True
+except ImportError:
+    RECOVERY_AVAILABLE = False
 
 def check_url_structure(url):
     # Check for huggingface.co URL structure (both blob and resolve URLs)
@@ -212,6 +223,18 @@ def is_launcher_json_format(import_json):
         return True
     return False
 
+# Apply recovery decorator to setup_custom_nodes_from_snapshot if available
+if RECOVERY_AVAILABLE:
+    setup_custom_nodes_from_snapshot = recoverable(
+        max_retries=3,
+        initial_delay=5.0,
+        backoff_factor=2.0,
+        max_delay=600.0,
+        timeout=1800.0,  # 30 minutes for custom node installation
+        circuit_breaker_threshold=5,
+        circuit_breaker_timeout=600.0  # 10 minutes
+    )(setup_custom_nodes_from_snapshot)
+
 def setup_custom_nodes_from_snapshot(project_folder_path, launcher_json, progress_callback=None, log_callback=None):
     """Install custom nodes with improved dependency resolution and error handling."""
     if not launcher_json or "snapshot_json" not in launcher_json:
@@ -310,9 +333,124 @@ class DownloadManager:
         self.failed_downloads: Set[str] = set()
         self.progress_callback = None
         
+        # Recovery system integration
+        self.recovery_enabled = RECOVERY_AVAILABLE
+        self.active_downloads = {}  # Track active downloads for recovery
+        self.download_settings = {
+            "max_concurrent_downloads": 3,
+            "max_retries": 5,
+            "chunk_size": 1024 * 1024,
+            "timeout": 30,
+            "bandwidth_limit": 0,
+            "auto_resume": True,
+            "verify_checksums": True
+        }
+        
+        # Initialize recovery components if available
+        if self.recovery_enabled:
+            try:
+                self.persistence = SQLitePersistence()
+                self.recovery_strategy = ExponentialBackoffStrategy(
+                    initial_delay=2.0,
+                    backoff_factor=2.0,
+                    max_delay=60.0,
+                    jitter=True
+                )
+                print("Recovery system initialized for DownloadManager")
+            except Exception as e:
+                print(f"Failed to initialize recovery system: {e}")
+                self.recovery_enabled = False
+        
     def set_progress_callback(self, callback):
         """Set a callback function for progress updates."""
         self.progress_callback = callback
+        
+    # Recovery system methods
+    def get_instance():
+        """Get singleton instance of DownloadManager."""
+        if not hasattr(DownloadManager, '_instance'):
+            DownloadManager._instance = None
+        return DownloadManager._instance
+    
+    @classmethod
+    def initialize(cls, project_folder_path: str, config: dict):
+        """Initialize the singleton instance."""
+        cls._instance = cls(project_folder_path, config)
+        return cls._instance
+        
+    def _generate_download_id(self, url: str, dest_path: str) -> str:
+        """Generate unique download ID."""
+        import hashlib
+        content = f"{url}:{dest_path}"
+        return hashlib.sha256(content.encode()).hexdigest()
+        
+    def _register_download(self, url: str, dest_path: str, task_id: str = None):
+        """Register a download for tracking and recovery."""
+        download_id = task_id or self._generate_download_id(url, dest_path)
+        
+        self.active_downloads[download_id] = {
+            "id": download_id,
+            "url": url,
+            "dest_path": dest_path,
+            "status": "pending",
+            "progress": 0,
+            "bytes_downloaded": 0,
+            "total_bytes": 0,
+            "speed": 0,
+            "eta": 0,
+            "attempts": 0,
+            "error": None,
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "can_resume": True,
+            "can_pause": True
+        }
+        
+        return download_id
+        
+    def _update_download_status(self, download_id: str, **kwargs):
+        """Update download status."""
+        if download_id in self.active_downloads:
+            self.active_downloads[download_id].update(kwargs)
+            self.active_downloads[download_id]["updated_at"] = time.time()
+            
+    def pause_download(self, download_id: str):
+        """Pause a specific download."""
+        if download_id in self.active_downloads:
+            download = self.active_downloads[download_id]
+            if download["status"] == "downloading":
+                download["status"] = "paused"
+                download["can_resume"] = True
+                download["can_pause"] = False
+                print(f"Download {download_id} paused")
+                return True
+        return False
+        
+    def resume_download(self, download_id: str):
+        """Resume a paused download."""
+        if download_id in self.active_downloads:
+            download = self.active_downloads[download_id]
+            if download["status"] == "paused":
+                download["status"] = "downloading"
+                download["can_resume"] = False
+                download["can_pause"] = True
+                download["attempts"] += 1
+                print(f"Download {download_id} resumed")
+                return True
+        return False
+        
+    def cancel_download(self, download_id: str):
+        """Cancel a download."""
+        if download_id in self.active_downloads:
+            download = self.active_downloads[download_id]
+            download["status"] = "cancelled"
+            download["can_resume"] = False
+            download["can_pause"] = False
+            print(f"Download {download_id} cancelled")
+            # Remove from active downloads
+            del self.active_downloads[download_id]
+            return True
+        return False
         
     def _get_cached_file_path(self, sha256_checksum: str) -> Optional[str]:
         """Check if a file with the given checksum already exists in the models directory."""
@@ -335,7 +473,7 @@ class DownloadManager:
                     return file_path
         return None
         
-    def _download_file_with_progress(self, url: str, dest_path: str, headers: dict = None) -> bool:
+    def _download_file_with_progress(self, url: str, dest_path: str, headers: dict = None, download_id: str = None) -> bool:
         """Download a file with progress bar, timeout handling, and resume support."""
         try:
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
@@ -388,6 +526,10 @@ class DownloadManager:
             else:
                 total_size = int(response.headers.get("content-length", 0))
             
+            # Update recovery status with total size
+            if download_id and download_id in self.active_downloads:
+                self._update_download_status(download_id, total_bytes=total_size)
+            
             # Download with progress
             mode = 'ab' if resume_pos > 0 else 'wb'
             with tqdm(total=total_size, initial=resume_pos, unit="B", unit_scale=True, 
@@ -396,6 +538,7 @@ class DownloadManager:
                     downloaded = resume_pos
                     start_time = time.time()
                     last_progress_time = time.time()
+                    last_recovery_update = time.time()
                     
                     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                         if chunk:
@@ -411,6 +554,21 @@ class DownloadManager:
                             if self.progress_callback and time.time() - last_progress_time > 1:
                                 self.progress_callback(dest_path, downloaded, total_size)
                                 last_progress_time = time.time()
+                            
+                            # Update recovery status (throttled to every 2 seconds)
+                            if download_id and time.time() - last_recovery_update > 2:
+                                progress = (downloaded / total_size * 100) if total_size > 0 else 0
+                                speed = downloaded / (time.time() - start_time) if time.time() > start_time else 0
+                                eta = (total_size - downloaded) / speed if speed > 0 else 0
+                                
+                                self._update_download_status(
+                                    download_id, 
+                                    progress=progress,
+                                    bytes_downloaded=downloaded,
+                                    speed=speed,
+                                    eta=eta
+                                )
+                                last_recovery_update = time.time()
             
             # Verify download completed
             if total_size > 0 and os.path.getsize(temp_path) != total_size:
@@ -444,57 +602,73 @@ class DownloadManager:
         
     def download_file(self, task: DownloadTask) -> DownloadTask:
         """Download a single file with retry logic and verification."""
-        # Check if file already exists with correct checksum
-        if os.path.exists(task.dest_path):
-            existing_checksum = compute_sha256_checksum(task.dest_path)
-            if existing_checksum == task.sha256_checksum:
-                print(f"File already exists with correct checksum: {task.dest_relative_path}")
-                task.success = True
-                return task
-                
-        # Check cache for file with matching checksum
-        cached_path = self._get_cached_file_path(task.sha256_checksum)
-        if cached_path:
-            print(f"Found cached file with matching checksum, creating hard link: {task.dest_relative_path}")
-            try:
-                os.makedirs(os.path.dirname(task.dest_path), exist_ok=True)
-                # Try hard link first, fall back to copy
-                try:
-                    os.link(cached_path, task.dest_path)
-                except:
-                    shutil.copy2(cached_path, task.dest_path)
-                task.success = True
-                return task
-            except Exception as e:
-                print(f"Failed to link/copy cached file: {e}")
-                
-        # Try all URLs (main + alternates)
-        all_urls = [task.url] + task.alternate_urls
-        headers = self._prepare_download_headers(task.url)
+        # Register download for recovery tracking
+        download_id = self._register_download(task.url, task.dest_path)
+        self._update_download_status(download_id, status="downloading")
         
-        for attempt in range(MAX_DOWNLOAD_ATTEMPTS):
-            for url in all_urls:
-                print(f"Downloading {task.dest_relative_path} - Attempt {attempt + 1}/{MAX_DOWNLOAD_ATTEMPTS}")
-                
-                if self._download_file_with_progress(url, task.dest_path, headers):
-                    # Verify checksum
-                    downloaded_checksum = compute_sha256_checksum(task.dest_path)
-                    if downloaded_checksum == task.sha256_checksum:
-                        print(f"Successfully downloaded and verified: {task.dest_relative_path}")
-                        task.success = True
-                        self.download_cache[task.sha256_checksum] = task.dest_path
-                        return task
-                    else:
-                        print(f"Checksum mismatch for {task.dest_relative_path}: expected {task.sha256_checksum}, got {downloaded_checksum}")
-                        os.remove(task.dest_path)
-                        
-            # Delay before retry
-            if attempt < MAX_DOWNLOAD_ATTEMPTS - 1:
-                time.sleep(DOWNLOAD_RETRY_DELAY * (attempt + 1))
-                
-        task.error = f"Failed after {MAX_DOWNLOAD_ATTEMPTS} attempts"
-        self.failed_downloads.add(task.dest_relative_path)
-        return task
+        try:
+            # Check if file already exists with correct checksum
+            if os.path.exists(task.dest_path):
+                existing_checksum = compute_sha256_checksum(task.dest_path)
+                if existing_checksum == task.sha256_checksum:
+                    print(f"File already exists with correct checksum: {task.dest_relative_path}")
+                    task.success = True
+                    self._update_download_status(download_id, status="completed", progress=100)
+                    return task
+                    
+            # Check cache for file with matching checksum
+            cached_path = self._get_cached_file_path(task.sha256_checksum)
+            if cached_path:
+                print(f"Found cached file with matching checksum, creating hard link: {task.dest_relative_path}")
+                try:
+                    os.makedirs(os.path.dirname(task.dest_path), exist_ok=True)
+                    # Try hard link first, fall back to copy
+                    try:
+                        os.link(cached_path, task.dest_path)
+                    except:
+                        shutil.copy2(cached_path, task.dest_path)
+                    task.success = True
+                    self._update_download_status(download_id, status="completed", progress=100)
+                    return task
+                except Exception as e:
+                    print(f"Failed to link/copy cached file: {e}")
+                    
+            # Try all URLs (main + alternates)
+            all_urls = [task.url] + task.alternate_urls
+            headers = self._prepare_download_headers(task.url)
+            
+            for attempt in range(MAX_DOWNLOAD_ATTEMPTS):
+                for url in all_urls:
+                    print(f"Downloading {task.dest_relative_path} - Attempt {attempt + 1}/{MAX_DOWNLOAD_ATTEMPTS}")
+                    self._update_download_status(download_id, attempts=attempt + 1)
+                    
+                    if self._download_file_with_progress(url, task.dest_path, headers, download_id):
+                        # Verify checksum
+                        downloaded_checksum = compute_sha256_checksum(task.dest_path)
+                        if downloaded_checksum == task.sha256_checksum:
+                            print(f"Successfully downloaded and verified: {task.dest_relative_path}")
+                            task.success = True
+                            self.download_cache[task.sha256_checksum] = task.dest_path
+                            self._update_download_status(download_id, status="completed", progress=100)
+                            return task
+                        else:
+                            print(f"Checksum mismatch for {task.dest_relative_path}: expected {task.sha256_checksum}, got {downloaded_checksum}")
+                            os.remove(task.dest_path)
+                            
+                # Delay before retry
+                if attempt < MAX_DOWNLOAD_ATTEMPTS - 1:
+                    time.sleep(DOWNLOAD_RETRY_DELAY * (attempt + 1))
+                    
+            task.error = f"Failed after {MAX_DOWNLOAD_ATTEMPTS} attempts"
+            self.failed_downloads.add(task.dest_relative_path)
+            self._update_download_status(download_id, status="failed", error=task.error)
+            return task
+            
+        except Exception as e:
+            task.error = str(e)
+            self.failed_downloads.add(task.dest_relative_path)
+            self._update_download_status(download_id, status="failed", error=task.error)
+            return task
         
     def download_files_parallel(self, tasks: List[DownloadTask]) -> Tuple[List[DownloadTask], Set[str]]:
         """Download multiple files in parallel with proper error handling."""
@@ -598,7 +772,19 @@ class CustomNodeDependencyResolver:
             if os.path.exists(temp_req_file):
                 os.remove(temp_req_file)
                 
-    def install_custom_node(self, node_url: str, node_info: dict, log_callback=None) -> bool:
+    # Apply recovery decorator to install_custom_node if available
+if RECOVERY_AVAILABLE:
+    install_custom_node = recoverable(
+        max_retries=3,
+        initial_delay=3.0,
+        backoff_factor=2.0,
+        max_delay=300.0,
+        timeout=600.0,  # 10 minutes for custom node install
+        circuit_breaker_threshold=5,
+        circuit_breaker_timeout=300.0  # 5 minutes
+    )(install_custom_node)
+
+def install_custom_node(self, node_url: str, node_info: dict, log_callback=None) -> bool:
         """Install a single custom node with all its dependencies."""
         node_name = node_url.split("/")[-1].replace(".git", "")
         
@@ -879,6 +1065,18 @@ def update_config(config_update):
 def set_config(config):
     with open(CONFIG_FILEPATH, "w") as f:
         json.dump(config, f)
+
+# Apply recovery decorator to setup_files_from_launcher_json if available
+if RECOVERY_AVAILABLE:
+    setup_files_from_launcher_json = recoverable(
+        max_retries=3,
+        initial_delay=5.0,
+        backoff_factor=2.0,
+        max_delay=900.0,
+        timeout=3600.0,  # 1 hour for file downloads
+        circuit_breaker_threshold=3,
+        circuit_breaker_timeout=600.0  # 10 minutes
+    )(setup_files_from_launcher_json)
 
 def setup_files_from_launcher_json(project_folder_path, launcher_json, progress_callback=None):
     """Download all files specified in launcher JSON with improved error handling and parallel downloads."""

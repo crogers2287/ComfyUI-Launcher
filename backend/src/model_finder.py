@@ -15,6 +15,13 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
+# Import recovery components
+try:
+    from .recovery import recoverable
+    RECOVERY_AVAILABLE = True
+except ImportError:
+    RECOVERY_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -113,6 +120,18 @@ class ModelFinder:
         self.civitai_base = "https://civitai.com/api/v1"
         self.hf_base = "https://huggingface.co"
         
+    # Apply recovery decorator to find_model method if available
+    if RECOVERY_AVAILABLE:
+        find_model = recoverable(
+            max_retries=3,
+            initial_delay=3.0,
+            backoff_factor=2.0,
+            max_delay=120.0,
+            timeout=120.0,  # 2 minutes for model search
+            circuit_breaker_threshold=5,
+            circuit_breaker_timeout=600.0  # 10 minutes
+        )(find_model)
+    
     def find_model(self, filename: str, model_type: Optional[str] = None) -> List[ModelResult]:
         """
         Find a model by filename across multiple sources
