@@ -21,3 +21,27 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 })
+
+// Mock file imports
+vi.mock('@/lib/types', () => ({
+  Settings: vi.fn(),
+  WorkflowTemplateItem: vi.fn(),
+}))
+
+// Mock localStorage and IndexedDB
+Object.defineProperty(global, 'localStorage', {
+  value: {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+  },
+  configurable: true,
+})
+
+Object.defineProperty(global, 'indexedDB', {
+  value: {
+    open: vi.fn(),
+  },
+  configurable: true,
+})
