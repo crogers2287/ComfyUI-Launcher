@@ -485,6 +485,32 @@ If Claude Code PM helps your team ship better software:
 
 ---
 
+## Recovery System Documentation
+
+The ComfyUI Launcher includes a comprehensive recovery system that provides automatic retry capabilities for critical operations. This system ensures robust operation in challenging network and system conditions.
+
+### Documentation
+
+- **[User Guide](docs/USER_GUIDE_RECOVERY.md)** - Comprehensive guide for users on recovery features, controls, and troubleshooting
+- **[Technical Architecture](docs/TECHNICAL_ARCHITECTURE_RECOVERY.md)** - Detailed technical documentation of the recovery system architecture
+- **[API Documentation](backend/src/API_DOCUMENTATION.md)** - Complete API reference including recovery endpoints and WebSocket events
+- **[Integration Guide](docs/INTEGRATION_GUIDE_RECOVERY.md)** - Developer guide for integrating recovery into new operations
+
+### Key Features
+
+- **Automatic Retry**: Failed operations automatically retry with intelligent backoff strategies
+- **Progress Preservation**: Download progress and operation state preserved across interruptions
+- **Real-time Monitoring**: Live status updates and recovery indicators via WebSocket
+- **Smart Error Handling**: Intelligent error classification determines retry appropriateness
+- **Circuit Breaker**: Prevents cascading failures during systemic issues
+- **User Controls**: Manual retry, pause, resume, and cancel options
+
+### Quick Start
+
+For users, see the [User Guide](docs/USER_GUIDE_RECOVERY.md) for comprehensive information on using recovery features.
+
+For developers, see the [Integration Guide](docs/INTEGRATION_GUIDE_RECOVERY.md) for adding recovery capabilities to new operations.
+
 ## Star History
 
 ![Star History Chart](https://api.star-history.com/svg?repos=automazeio/ccpm)
