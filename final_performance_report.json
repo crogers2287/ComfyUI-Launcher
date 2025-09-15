@@ -1,0 +1,85 @@
+{
+  "report_timestamp": "2025-09-15T06:52:24.589765+00:00",
+  "requirements": {
+    "max_overhead_percent": 5.0,
+    "max_memory_overhead_mb": 5.0,
+    "min_success_rate_percent": 90.0,
+    "max_checkpoint_time_ms": 100.0,
+    "max_recovery_time_ms": 500.0
+  },
+  "test_summary": {
+    "total_tests": 5,
+    "passed_tests": 3,
+    "skipped_tests": 0,
+    "failed_tests": 2,
+    "pass_rate": 60.0,
+    "average_overhead_percent": 355.30122653693996,
+    "maximum_overhead_percent": 705.8034866033826,
+    "recovery_success_rate_percent": 70.0,
+    "overall_performance_score": 0
+  },
+  "requirements_validation": {
+    "overhead_requirement_met": false,
+    "recovery_success_requirement_met": false,
+    "memory_requirement_met": true,
+    "all_requirements_met": false
+  },
+  "detailed_results": {
+    "decorator_overhead": {
+      "test_name": "decorator_overhead",
+      "baseline_time_ms": 1.1917070737108588,
+      "recovery_time_ms": 1.2488966966047883,
+      "overhead_percent": 4.79896647049738,
+      "within_threshold": true,
+      "iterations": 1000,
+      "status": "PASS"
+    },
+    "recovery_performance": {
+      "test_name": "recovery_performance",
+      "avg_recovery_time_ms": 14.525358176324517,
+      "success_rate_percent": 70.0,
+      "total_operations": 100,
+      "successful_operations": 70,
+      "failed_operations": 30,
+      "time_within_threshold": true,
+      "success_rate_within_threshold": false,
+      "status": "FAIL"
+    },
+    "memory_usage": {
+      "test_name": "memory_usage",
+      "baseline_memory_mb": 0.0,
+      "recovery_memory_mb": 0.0025205612182617188,
+      "memory_overhead_mb": 0.0025205612182617188,
+      "within_threshold": true,
+      "memory_efficiency_score": 99.94958877563477,
+      "status": "PASS"
+    },
+    "persistence_overhead": {
+      "test_name": "persistence_overhead",
+      "no_persistence_time_ms": 1.2783796293660998,
+      "persistence_time_ms": 10.301227625459433,
+      "overhead_percent": 705.8034866033826,
+      "within_threshold": false,
+      "iterations": 50,
+      "status": "FAIL"
+    },
+    "load_testing": {
+      "test_name": "concurrent_load",
+      "concurrent_users": 20,
+      "duration_seconds": 10.004795789718628,
+      "total_operations": 15880,
+      "throughput_ops_per_sec": 1587.23879365124,
+      "avg_ops_per_user": 794.0,
+      "status": "PASS"
+    }
+  },
+  "overall_assessment": {
+    "status": "FAILURE",
+    "grade": "Critical",
+    "recommendations": [
+      "Reduce average overhead from 355.30% to below 5.0%",
+      "Improve recovery success rate from 70.0% to at least 90.0%",
+      "Fix failing tests: recovery_performance, persistence_overhead"
+    ]
+  }
+}

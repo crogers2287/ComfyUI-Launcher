@@ -1,0 +1,61 @@
+{
+  "report_timestamp": "2025-09-14T20:16:10.846531+00:00",
+  "requirements": {
+    "max_overhead_percent": 5.0,
+    "max_memory_overhead_mb": 5.0,
+    "min_success_rate_percent": 90.0,
+    "max_checkpoint_time_ms": 100.0,
+    "max_recovery_time_ms": 500.0
+  },
+  "performance_summary": {
+    "total_tests": 3,
+    "passed_tests": 0,
+    "failed_tests": 3,
+    "success_rate": 0.0,
+    "average_overhead_percent": 273.62497764319306,
+    "maximum_overhead_percent": 761.2733847496431,
+    "meets_requirements": false,
+    "test_results": [
+      {
+        "test_name": "decorator_overhead",
+        "baseline_time_ms": 1.1694693970493972,
+        "recovery_time_ms": 1.2418791083618999,
+        "overhead_percent": 6.191672180152325,
+        "within_threshold": false,
+        "details": "Baseline: 1.169ms, Recovery: 1.242ms"
+      },
+      {
+        "test_name": "checkpoint_performance",
+        "baseline_time_ms": 1.1939324298873544,
+        "recovery_time_ms": 10.283022250514477,
+        "overhead_percent": 761.2733847496431,
+        "within_threshold": false,
+        "details": "Avg checkpoint time: 10.283ms"
+      },
+      {
+        "test_name": "recovery_performance",
+        "baseline_time_ms": 1.1431243643164635,
+        "recovery_time_ms": 1.7536656698212028,
+        "overhead_percent": 53.40987599978375,
+        "within_threshold": false,
+        "details": "Avg recovery time: 1.754ms, Success rate: 8.0%"
+      }
+    ]
+  },
+  "memory_results": {
+    "baseline_memory_mb": 0.0,
+    "recovery_memory_mb": 0.002651214599609375,
+    "memory_overhead_mb": 0.002651214599609375,
+    "within_threshold": true,
+    "memory_efficiency_score": 99.94697570800781
+  },
+  "overall_assessment": {
+    "performance_score": 24.986743927001953,
+    "grade": "Critical",
+    "meets_all_requirements": false,
+    "recommendations": [
+      "Reduce overhead from 273.62% to below 5%",
+      "Address 3 failing performance tests"
+    ]
+  }
+}
